@@ -1,93 +1,88 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, Query, HTTPException
 from fastapi.responses import JSONResponse
 import httpx
-from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
-import asyncio
+from datetime import datetime
+from datetime import timedelta
 
-app = FastAPI(title="Aadhaar Proxy API with Remaining Days")
+app = FastAPI()
 
-# Target API endpoint
-TARGET_API = "https://atof.onrender.com/full-search"
-
-# Setting initial days to 30 (can be adjusted)
+# Fixed start date - days will count down from 30
+START_DATE = datetime(2026, 5, 10)  # When API started
 INITIAL_DAYS = 30
-START_DATE = datetime.now().date()  # API starts from today
 
-def calculate_remaining_days() -> int:
-    """Calculate remaining days based on start date"""
-    today = datetime.now().date()
-    days_passed = (today - START_DATE).days
-    remaining = max(0, INITIAL_DAYS - days_passed)
+def get_remaining_days():
+    """Calculate remaining days and raise exception if expired"""
+    days_passed = (datetime.now().date() - START_DATE.date()).days
+    remaining = INITIAL_DAYS - days_passed
+    
+    if remaining < 0:
+        raise HTTPException(
+            status_code=410, 
+            detail="API Expired - 30 days period has ended"
+        )
     return remaining
 
-async def fetch_original_data(aadhaar: str) -> Dict[str, Any]:
-    """Fetch data from the original API"""
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(TARGET_API, params={"aadhaar": aadhaar})
-        response.raise_for_status()
-        return response.json()
-
-def add_remaining_days_to_response(original_data: Dict[str, Any]) -> Dict[str, Any]:
-    """Add remaining days field to the original response"""
-    remaining_days = calculate_remaining_days()
-    
-    # Create a new response with remaining days added
-    enhanced_response = {
-        "remaining_days": remaining_days,
-        **original_data  # Spread original data
-    }
-    return enhanced_response
-
 @app.get("/full-search")
-async def proxy_full_search(aadhaar: str = Query(..., description="Aadhaar number")):
-    """
-    Proxy endpoint that fetches data from original API and adds remaining days
-    """
-    try:
-        # Fetch original data
-        original_data = await fetch_original_data(aadhaar)
-        
-        # Add remaining days and return
-        enhanced_data = add_remaining_days_to_response(original_data)
-        
-        return JSONResponse(content=enhanced_data)
-        
-    except httpx.HTTPStatusError as e:
-        raise HTTPException(status_code=e.response.status_code, detail=f"Upstream API error: {e.response.text}")
-    except httpx.RequestError as e:
-        raise HTTPException(status_code=503, detail=f"Failed to reach upstream API: {str(e)}")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+async def full_search(aadhaar: str = Query(...)):
+    # Check if API is expired first
+    remaining_days = get_remaining_days()
+    
+    # Fetch original API response
+    async with httpx.AsyncClient() as client:
+        original_response = await client.get(
+            "https://atof.onrender.com/full-search",
+            params={"aadhaar": aadhaar}
+        )
+        original_data = original_response.json()
+    
+    # Add remaining days field
+    original_data["remaining_days"] = remaining_days
+    
+    return JSONResponse(content=original_data)
 
 @app.get("/remaining-days")
-async def get_remaining_days():
-    """Endpoint to check only remaining days"""
-    return {"remaining_days": calculate_remaining_days()}
+async def get_remaining_days_only():
+    """Check remaining days only"""
+    remaining_days = get_remaining_days()
+    return {"remaining_days": remaining_days}
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "remaining_days": calculate_remaining_days(),
-        "start_date": START_DATE.isoformat(),
-        "initial_days": INITIAL_DAYS
-    }
+    try:
+        remaining_days = get_remaining_days()
+        return {
+            "status": "healthy",
+            "remaining_days": remaining_days,
+            "start_date": START_DATE.isoformat(),
+            "initial_days": INITIAL_DAYS,
+            "expiry_date": (START_DATE + timedelta(days=INITIAL_DAYS)).isoformat()
+        }
+    except HTTPException as e:
+        return {
+            "status": "expired",
+            "message": e.detail
+        }
 
-# Optional: Root endpoint with API info
 @app.get("/")
 async def root():
-    return {
-        "message": "Aadhaar Proxy API with Remaining Days",
-        "endpoints": {
-            "/full-search": "GET - Pass aadhaar parameter",
-            "/remaining-days": "GET - Check remaining days only",
-            "/health": "GET - Health check"
-        },
-        "example": "/full-search?aadhaar=202372727238",
-        "remaining_days_initial": INITIAL_DAYS,
-        "remaining_days_current": calculate_remaining_days()
-    }
+    try:
+        remaining_days = get_remaining_days()
+        return {
+            "message": "Aadhaar Proxy API with Remaining Days",
+            "endpoints": {
+                "/full-search": "GET - Pass aadhaar parameter",
+                "/remaining-days": "GET - Check remaining days only",
+                "/health": "GET - Health check"
+            },
+            "example": "/full-search?aadhaar=202372727238",
+            "remaining_days_initial": INITIAL_DAYS,
+            "remaining_days_current": remaining_days,
+            "expiry_date": (START_DATE + timedelta(days=INITIAL_DAYS)).isoformat()
+        }
+    except HTTPException as e:
+        return {
+            "message": "API has expired",
+            "detail": e.detail
+        }
 
-# To run: uvicorn main:app --reload --port 8000
