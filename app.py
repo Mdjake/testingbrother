@@ -5,8 +5,7 @@ from datetime import datetime
 
 app = FastAPI()
 
-# Fixed start date - days will count down from 30
-START_DATE = datetime(2026, 5, 10)  # Today
+START_DATE = datetime(2026, 5, 10)
 INITIAL_DAYS = 30
 
 def get_remaining_days():
@@ -15,18 +14,39 @@ def get_remaining_days():
 
 @app.get("/full-search")
 async def full_search(aadhaar: str = Query(...)):
-    # 1. Fetch original API response (exact same)
-    async with httpx.AsyncClient() as client:
-        original_response = await client.get(
-            "https://atof.onrender.com/full-search",
-            params={"aadhaar": aadhaar}
-        )
-        original_data = original_response.json()
-    
-    # 2. Add remaining days field
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            original_response = await client.get(
+                "https://atof.onrender.com/full-search",
+                params={"aadhaar": aadhaar}
+            )
+            original_response.raise_for_status()
+        except httpx.TimeoutException:
+            return JSONResponse({"error": "Upstream API timed out"}, status_code=504)
+        except httpx.HTTPStatusError as e:
+            return JSONResponse(
+                {"error": f"Upstream returned {e.response.status_code}", "detail": e.response.text[:300]},
+                status_code=502
+            )
+        except httpx.RequestError as e:
+            return JSONResponse({"error": f"Connection failed: {str(e)}"}, status_code=502)
+
+        try:
+            original_data = original_response.json()
+        except Exception:
+            return JSONResponse(
+                {"error": "Upstream returned non-JSON", "body": original_response.text[:300]},
+                status_code=502
+            )
+
     original_data["remaining_days"] = get_remaining_days()
-    
-    # 3. Return everything (original + new field at end)
     return JSONResponse(content=original_data)
 
-# Run: uvicorn main:app --reload
+@app.get("/health")
+async def health():
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            r = await client.get("https://atof.onrender.com/full-search", params={"aadhaar": "test"})
+            return {"upstream_status": r.status_code, "remaining_days": get_remaining_days()}
+    except Exception as e:
+        return {"error": str(e)}
