@@ -2,6 +2,7 @@ from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 import httpx
 from datetime import datetime
+import asyncio
 
 app = FastAPI()
 
@@ -11,6 +12,23 @@ INITIAL_DAYS = 30
 def get_remaining_days():
     days_passed = (datetime.now().date() - START_DATE.date()).days
     return max(0, INITIAL_DAYS - days_passed)
+
+async def keep_alive():
+    while True:
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                r = await client.get(
+                    "https://aadharfam.onrender.com/full-search?aadhaar=402176230714"
+                )
+                print(f"[PING] Status: {r.status_code}")
+        except Exception as e:
+            print(f"[PING ERROR] {e}")
+
+        await asyncio.sleep(120)
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(keep_alive())
 
 @app.get("/full-search")
 async def full_search(aadhaar: str = Query(...)):
@@ -46,7 +64,13 @@ async def full_search(aadhaar: str = Query(...)):
 async def health():
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            r = await client.get("https://atof.onrender.com/full-search", params={"aadhaar": "test"})
-            return {"upstream_status": r.status_code, "remaining_days": get_remaining_days()}
+            r = await client.get(
+                "https://atof.onrender.com/full-search",
+                params={"aadhaar": "test"}
+            )
+            return {
+                "upstream_status": r.status_code,
+                "remaining_days": get_remaining_days()
+            }
     except Exception as e:
         return {"error": str(e)}
