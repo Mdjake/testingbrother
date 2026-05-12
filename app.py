@@ -30,7 +30,7 @@ async def keep_alive():
 async def startup_event():
     asyncio.create_task(keep_alive())
 
-app.get("/full-search")
+@app.get("/full-search")
 async def full_search(aadhaar: str = Query(...)):
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
