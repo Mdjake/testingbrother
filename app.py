@@ -24,7 +24,7 @@ async def keep_alive():
         except Exception as e:
             print(f"[PING ERROR] {e}")
 
-        await asyncio.sleep(120)
+        await asyncio.sleep(160)
 
 @app.on_event("startup")
 async def startup_event():
