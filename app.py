@@ -1,10 +1,20 @@
 from fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware  # ADD THIS
 import httpx
 from datetime import datetime
 import asyncio
 
 app = FastAPI()
+
+# ADD THIS CORS MIDDLEWARE
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins (for development)
+    allow_credentials=True,
+    allow_methods=["*"],  # Allows all methods (GET, POST, etc.)
+    allow_headers=["*"],  # Allows all headers
+)
 
 START_DATE = datetime(2026, 5, 10)
 INITIAL_DAYS = 30
@@ -58,7 +68,29 @@ async def full_search(aadhaar: str = Query(...)):
             )
 
     original_data["remaining_days"] = get_remaining_days()
-    return JSONResponse(content=original_data)
+    
+    # Add CORS headers manually (backup)
+    return JSONResponse(
+        content=original_data,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
+# Add OPTIONS handler for preflight requests
+@app.options("/full-search")
+async def options_full_search():
+    return JSONResponse(
+        content={},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Max-Age": "86400",
+        }
+    )
 
 @app.get("/health")
 async def health():
