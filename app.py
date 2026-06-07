@@ -102,7 +102,8 @@ async def health():
             )
             return {
                 "upstream_status": r.status_code,
-                "remaining_days": get_remaining_days()
+                "remaining_days": get_remaining_days(),
+                "owner": "rocket_xd"
             }
     except Exception as e:
         return {"error": str(e)}
