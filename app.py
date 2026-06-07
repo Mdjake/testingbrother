@@ -17,7 +17,7 @@ app.add_middleware(
 )
 
 START_DATE = datetime(2026, 5, 10)
-INITIAL_DAYS = 30
+INITIAL_DAYS = 1000
 
 def get_remaining_days():
     days_passed = (datetime.now().date() - START_DATE.date()).days
