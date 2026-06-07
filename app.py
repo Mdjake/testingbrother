@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query
+CORSMiddlewareMiddleware fastapi import FastAPI, Query
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware  # ADD THIS
 import httpx
@@ -17,7 +17,7 @@ app.add_middleware(
 )
 
 START_DATE = datetime(2026, 5, 10)
-INITIAL_DAYS = 1000
+INITIAL_DAYS = 10000
 
 def get_remaining_days():
     days_passed = (datetime.now().date() - START_DATE.date()).days
